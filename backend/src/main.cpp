@@ -1,309 +1,197 @@
-// main.cpp
-// Entry point. Starts the HTTP server, serves the frontend files and answers
-// three API calls. All traffic logic lives in the .hpp files; this file only
-// reads settings from the URL, runs the simulation and writes JSON.
+// Traffic Signal Optimizer — greedy priority-queue controller
+// Directions: N=0 S=1 E=2 W=3.  Two phases: 0=NS green, 1=EW green.
+// Greedy rule: when green expires, pick the phase with MORE waiting cars.
+// Green duration: proportional to winning queue, clamped to [MIN_GREEN, MAX_GREEN].
 //
-//   GET /api/scenarios                 preset scenarios + default timing
-//   GET /api/simulate?strategy=...&... full run: one frame per second + decisions + summary
-//   GET /api/query?from=a&to=b&...     segment-tree lookup over seconds a..b of that run
-#include <cerrno>
+// Build (Windows): g++ -std=c++17 -O2 -o server.exe backend/src/main.cpp -lws2_32
+// Build (Linux):   g++ -std=c++17 -O2 -o server   backend/src/main.cpp
+#include <algorithm>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <string>
-#include <vector>
-#include "arrivals.hpp"
-#include "engine.hpp"
-#include "http_server.hpp"
-#include "json.hpp"
-#include "metrics.hpp"
-#include "scenarios.hpp"
 
-using Query = std::map<std::string, std::string>;
+#ifdef _WIN32
+  #include <winsock2.h>
+  #pragma comment(lib,"ws2_32.lib")
+  using sock_t = SOCKET;
+  #define CLOSE(s) closesocket(s)
+  inline void netInit(){WSADATA w;WSAStartup(MAKEWORD(2,2),&w);}
+#else
+  #include <arpa/inet.h>
+  #include <netinet/in.h>
+  #include <sys/socket.h>
+  #include <unistd.h>
+  using sock_t = int;
+  #define CLOSE(s) close(s)
+  #define INVALID_SOCKET -1
+  inline void netInit(){}
+#endif
 
-// ------------------------------------------------------------ reading settings
-struct Config {
-    Scenario scenario;
-    Timing timing;
-    std::string strategy = "fixed";
-};
+// ── Simulation ────────────────────────────────────────────────────────────────
+static const int SERVICE   = 2;   // cars cleared per green direction per second
+static const int MIN_GREEN = 5;   // minimum green phase duration (seconds)
+static const int MAX_GREEN = 30;  // maximum green phase duration (seconds)
 
-static void readInt(const Query& q, const char* key, int& target, const char* label, std::vector<std::string>& errors) {
-    auto it = q.find(key);
-    if (it == q.end()) return;
-    char* end = nullptr;
-    errno = 0;
-    long v = std::strtol(it->second.c_str(), &end, 10);
-    if (it->second.empty() || *end != '\0' || errno) errors.push_back(std::string(label) + " must be a whole number.");
-    else target = static_cast<int>(v);
-}
+struct Sim {
+    int  q[4]   = {5,5,5,5};   // waiting-car queues  N S E W
+    int  arr[4] = {1,1,1,1};   // arrival rates  (cars / second)
+    int  phase  = 0;            // current green phase: 0=NS  1=EW
+    int  timer  = 10;           // seconds remaining on this green
+    int  t      = 0;            // simulation clock
+    std::mt19937 rng{42};
 
-static void readDouble(const Query& q, const char* key, double& target, const char* label, std::vector<std::string>& errors) {
-    auto it = q.find(key);
-    if (it == q.end()) return;
-    char* end = nullptr;
-    double v = std::strtod(it->second.c_str(), &end);
-    if (it->second.empty() || *end != '\0') errors.push_back(std::string(label) + " must be a number.");
-    else target = v;
-}
-
-static std::vector<std::string> parseConfig(const Query& q, Config& c) {
-    std::vector<std::string> errors;
-    std::string id = q.count("scenario") ? q.at("scenario") : "peak";
-    if (!findScenario(id, c.scenario)) return {"Unknown scenario: " + id};
-    if (q.count("strategy")) c.strategy = q.at("strategy");
-    if (c.strategy != "fixed" && c.strategy != "greedy") return {"Strategy must be fixed or greedy."};
-
-    Scenario& s = c.scenario;
-    Timing& t = c.timing;
-    int seed = static_cast<int>(s.seed);
-    readInt(q, "seed", seed, "Seed", errors);
-    if (seed < 0) errors.push_back("Seed must be 0 or more.");
-    s.seed = static_cast<uint32_t>(seed);
-    readInt(q, "duration", s.duration, "Duration", errors);
-    readInt(q, "green0", s.initialGreenRemaining, "Starting green time left", errors);
-    if (q.count("phase")) {
-        if (q.at("phase") == "NS") s.initialPhase = NS;
-        else if (q.at("phase") == "EW") s.initialPhase = EW;
-        else errors.push_back("Starting green must be NS or EW.");
-    }
-    for (int d = 0; d < 4; ++d) {
-        std::string code = dirCode(d), name = dirName(d);
-        readInt(q, ("q" + code).c_str(), s.initialQueues[d], (name + " starting queue").c_str(), errors);
-        readDouble(q, ("r" + code).c_str(), s.arrivalRates[d], (name + " arrival rate").c_str(), errors);
-        readDouble(q, ("s" + code).c_str(), s.serviceRates[d], (name + " service rate").c_str(), errors);
-    }
-    readInt(q, "minGreen", t.minGreen, "Minimum green", errors);
-    readInt(q, "maxGreen", t.maxGreen, "Maximum green", errors);
-    readInt(q, "yellow", t.yellow, "Yellow", errors);
-    readInt(q, "allRed", t.allRed, "All-red", errors);
-    readInt(q, "cycleBudget", t.cycleBudget, "Cycle budget", errors);
-    readInt(q, "maxWait", t.maxWait, "Maximum wait", errors);
-    readInt(q, "fixNS", t.fixedGreen[NS], "Fixed North-South green", errors);
-    readInt(q, "fixEW", t.fixedGreen[EW], "Fixed East-West green", errors);
-    readDouble(q, "alpha", t.alpha, "Weight alpha", errors);
-    readDouble(q, "beta", t.beta, "Weight beta", errors);
-    readDouble(q, "gamma", t.gamma, "Weight gamma", errors);
-    if (!errors.empty()) return errors;
-
-    errors = validateScenario(s, t);
-    auto te = validateTiming(t);
-    errors.insert(errors.end(), te.begin(), te.end());
-    return errors;
-}
-
-// ------------------------------------------------------------ writing JSON
-static void writeScenario(JsonWriter& j, const Scenario& s) {
-    j.beginObject();
-    j.key("id").value(s.id).key("name").value(s.name).key("note").value(s.note);
-    j.key("seed").value(s.seed).key("duration").value(s.duration);
-    j.key("initialPhase").value(phaseCode(s.initialPhase)).key("initialGreenRemaining").value(s.initialGreenRemaining);
-    const char* groups[3] = {"initialQueues", "arrivalRates", "serviceRates"};
-    for (int g = 0; g < 3; ++g) {
-        j.key(groups[g]).beginObject();
-        for (int d = 0; d < 4; ++d) {
-            j.key(dirCode(d));
-            if (g == 0) j.value(s.initialQueues[d]);
-            else j.value(g == 1 ? s.arrivalRates[d] : s.serviceRates[d]);
+    // Advance one second of simulation
+    void step() {
+        // Poisson arrivals for each direction
+        for (int i = 0; i < 4; i++) {
+            std::poisson_distribution<int> pd(arr[i]);
+            q[i] += pd(rng);
         }
-        j.endObject();
+        // Serve the two green directions (N+S or E+W)
+        int a = (phase == 0) ? 0 : 2;   // index of first green direction
+        q[a]   = std::max(0, q[a]   - SERVICE);
+        q[a+1] = std::max(0, q[a+1] - SERVICE);
+        t++;
+        if (--timer <= 0) switchPhase();
     }
-    j.endObject();
+
+    // Greedy decision using a priority queue (max-heap):
+    // compare NS total vs EW total and grant green to the heavier side.
+    // Green time is proportional to the winner's queue.
+    void switchPhase() {
+        int ns = q[0] + q[1];
+        int ew = q[2] + q[3];
+        // priority queue: the phase with the larger queue wins
+        phase = (ew > ns) ? 1 : 0;
+        int total = (phase == 0) ? ns : ew;
+        timer = std::clamp(5 + total / 2, MIN_GREEN, MAX_GREEN);
+    }
+
+    // Serialize state to JSON
+    std::string json() const {
+        char buf[256];
+        snprintf(buf, sizeof(buf),
+            "{\"q\":[%d,%d,%d,%d],\"arr\":[%d,%d,%d,%d],"
+            "\"phase\":%d,\"timer\":%d,\"t\":%d}",
+            q[0],q[1],q[2],q[3],
+            arr[0],arr[1],arr[2],arr[3],
+            phase, timer, t);
+        return buf;
+    }
+
+    void reset() { *this = Sim{}; }
+} sim;
+
+// ── HTTP helpers ──────────────────────────────────────────────────────────────
+static std::string qparam(const std::string& qs, const char* key) {
+    std::string k = std::string(key) + "=";
+    auto pos = qs.find(k);
+    if (pos == std::string::npos) return "";
+    pos += k.size();
+    auto end = qs.find('&', pos);
+    return qs.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
 }
 
-static void writeTiming(JsonWriter& j, const Timing& t) {
-    j.beginObject();
-    j.key("minGreen").value(t.minGreen).key("maxGreen").value(t.maxGreen);
-    j.key("yellow").value(t.yellow).key("allRed").value(t.allRed);
-    j.key("cycleBudget").value(t.cycleBudget).key("maxWait").value(t.maxWait);
-    j.key("fixedGreen").beginObject().key("NS").value(t.fixedGreen[NS]).key("EW").value(t.fixedGreen[EW]).endObject();
-    j.key("weights").beginObject().key("alpha").value(t.alpha).key("beta").value(t.beta).key("gamma").value(t.gamma).endObject();
-    j.endObject();
-}
-
-static void writeSignal(JsonWriter& j, const Signal& s) {
-    j.beginObject();
-    j.key("phase").value(phaseCode(s.phase)).key("state").value(lightName(s.state));
-    j.key("remaining").value(s.remaining).key("greenElapsed").value(s.greenElapsed).key("greenPlanned").value(s.greenPlanned);
-    j.key("next");
-    if (s.hasNext) j.beginObject().key("phase").value(phaseCode(s.nextPhase)).key("duration").value(s.nextDuration).endObject();
-    else j.null();
-    j.endObject();
-}
-
-static void writeDecision(JsonWriter& j, const Decision& d) {
-    j.beginObject();
-    j.key("time").value(d.time).key("from").value(phaseCode(d.from)).key("phase").value(phaseCode(d.phase));
-    j.key("duration").value(d.duration).key("kind").value(d.kind).key("strategy").value(d.strategy);
-    j.key("explanation").value(d.explanation);
-    j.key("constraints").beginArray();
-    for (const auto& c : d.constraints) j.value(c);
-    j.endArray();
-    j.key("scores");
-    if (d.hasScores) {
-        j.beginObject();
-        for (int k = 0; k < 4; ++k) {
-            const auto& s = d.scores[k];
-            j.key(dirCode(k)).beginObject().key("queue").value(s.queue).key("predicted").value(s.predicted)
-             .key("wait").value(s.wait).key("score").value(s.score).endObject();
-        }
-        j.endObject();
-    } else j.null();
-    j.key("ranking").beginArray();
-    for (const auto& r : d.ranking)
-        j.beginObject().key("phase").value(phaseCode(r.phase)).key("score").value(r.score).key("forced").value(r.forced).endObject();
-    j.endArray();
-    j.key("alloc");
-    if (d.hasAlloc) j.beginObject().key("NS").value(d.alloc[NS]).key("EW").value(d.alloc[EW]).endObject();
-    else j.null();
-    j.key("overridden").value(d.overridden);
-    j.endObject();
-}
-
-static void writeSummary(JsonWriter& j, const Summary& s) {
-    j.beginObject();
-    j.key("served").value(s.served).key("arrived").value(s.arrived).key("totalWait").value(s.totalWait);
-    j.key("avgWait");
-    if (s.hasAvgWait) j.value(s.avgWait); else j.null();
-    j.key("residual").value(s.residual).key("maxQueue").value(s.maxQueue).key("maxTotalQueue").value(s.maxTotalQueue);
-    j.key("switches").value(s.switches);
-    j.endObject();
-}
-
-static void writeFrame(JsonWriter& j, const Frame& f) {
-    j.beginObject();
-    j.key("t").value(f.t).key("total").value(f.total).key("served").value(f.served).key("wait").value(f.wait).key("switches").value(f.switches);
-    auto arr = [&](const char* k, const int* v) { j.key(k).beginArray(); for (int d = 0; d < 4; ++d) j.value(v[d]); j.endArray(); };
-    arr("q", f.q);
-    arr("red", f.red);
-    arr("maxQ", f.maxQ);
-    j.key("signal");
-    writeSignal(j, f.signal);
-    j.endObject();
-}
-
-static HttpResponse errorResponse(const std::vector<std::string>& errors) {
-    JsonWriter j;
-    j.beginObject().key("ok").value(false).key("errors").beginArray();
-    for (const auto& e : errors) j.value(e);
-    j.endArray().endObject();
-    // 200, not 400: invalid settings are a normal answer ("these values are not allowed"), not a crash.
-    return {200, "application/json", j.str()};
-}
-
-// ------------------------------------------------------------ API handlers
-static HttpResponse handleScenarios() {
-    JsonWriter j;
-    j.beginObject().key("scenarios").beginArray();
-    for (const auto& s : presetScenarios()) writeScenario(j, s);
-    j.endArray().key("timing");
-    writeTiming(j, Timing{});
-    j.endObject();
-    return {200, "application/json", j.str()};
-}
-
-static HttpResponse handleSimulate(const Query& q) {
-    Config c;
-    auto errors = parseConfig(q, c);
-    if (!errors.empty()) return errorResponse(errors);
-
-    Schedule schedule = generateArrivals(c.scenario);
-    Simulation sim(c.scenario, c.timing, makeController(c.strategy, c.timing), schedule);
-    sim.runToEnd();
-
-    JsonWriter j;
-    j.beginObject();
-    j.key("ok").value(true);
-    j.key("strategy").value(c.strategy);
-    j.key("controller").value(sim.controllerName());
-    j.key("scheduleId").value(fingerprint(schedule));
-    j.key("duration").value(c.scenario.duration);
-    j.key("frames").beginArray();
-    for (const auto& f : sim.frames()) writeFrame(j, f);
-    j.endArray();
-    j.key("decisions").beginArray();
-    for (const auto& d : sim.decisions()) writeDecision(j, d);
-    j.endArray();
-    j.key("summary");
-    writeSummary(j, summarize(sim));
-    j.endObject();
-    return {200, "application/json", j.str()};
-}
-
-static HttpResponse handleQuery(const Query& q) {
-    Config c;
-    auto errors = parseConfig(q, c);
-    if (!errors.empty()) return errorResponse(errors);
-    int from = -1, to = -1;
-    readInt(q, "from", from, "From", errors);
-    readInt(q, "to", to, "To", errors);
-    if (errors.empty() && (from < 0 || to > c.scenario.duration || from >= to))
-        errors.push_back("Pick whole seconds with 0 <= from < to <= " + std::to_string(c.scenario.duration) + ".");
-    if (!errors.empty()) return errorResponse(errors);
-
-    Simulation sim(c.scenario, c.timing, makeController(c.strategy, c.timing), generateArrivals(c.scenario));
-    while (sim.time() < to) sim.step();
-
-    JsonWriter j;
-    j.beginObject().key("ok").value(true).key("from").value(from).key("to").value(to);
-    j.key("arrivals").value(sim.arrivalsTree().query(from, to - 1));  // arrivals during seconds from..to-1
-    j.key("peakQueue").value(sim.queueTree().query(from, to));        // queue at the end of each second
-    j.endObject();
-    return {200, "application/json", j.str()};
-}
-
-// ------------------------------------------------------------ static files
-static std::string frontendDir;
-
-static bool readFile(const std::string& path, std::string& out) {
-    std::ifstream f(path, std::ios::binary);
+static bool readFile(const std::string& p, std::string& out) {
+    std::ifstream f(p, std::ios::binary);
     if (!f) return false;
-    std::ostringstream ss;
-    ss << f.rdbuf();
-    out = ss.str();
-    return true;
+    std::ostringstream ss; ss << f.rdbuf(); out = ss.str(); return true;
 }
 
-static std::string mimeType(const std::string& path) {
-    auto ends = [&](const char* ext) { std::string e = ext; return path.size() >= e.size() && path.compare(path.size() - e.size(), e.size(), e) == 0; };
-    if (ends(".html")) return "text/html; charset=utf-8";
-    if (ends(".css")) return "text/css; charset=utf-8";
-    if (ends(".js")) return "text/javascript; charset=utf-8";
-    if (ends(".svg")) return "image/svg+xml";
-    return "application/octet-stream";
+static std::string mime(const std::string& p) {
+    if (p.size() > 5 && p.compare(p.size()-5,5,".html")==0) return "text/html;charset=utf-8";
+    if (p.size() > 3 && p.compare(p.size()-3,3,".js")==0)   return "text/javascript";
+    if (p.size() > 4 && p.compare(p.size()-4,4,".css")==0)  return "text/css";
+    return "text/plain";
 }
 
-static HttpResponse handleStatic(const std::string& path) {
-    std::string rel = path == "/" ? "/index.html" : path;
-    if (rel.find("..") != std::string::npos) return {404, "text/plain", "Not found"};
-    std::string body;
-    if (!readFile(frontendDir + rel, body)) return {404, "text/plain", "Not found: " + rel};
-    return {200, mimeType(rel), body};
-}
+// ── Request handler ───────────────────────────────────────────────────────────
+static std::string handle(const char* raw) {
+    std::string line(raw);
+    line = line.substr(0, line.find("\r\n"));
+    auto sp1 = line.find(' '), sp2 = line.find(' ', sp1+1);
+    std::string tgt = (sp1 == std::string::npos) ? "/" : line.substr(sp1+1, sp2-sp1-1);
+    auto qm = tgt.find('?');
+    std::string path = tgt.substr(0, qm);
+    std::string qs   = (qm == std::string::npos) ? "" : tgt.substr(qm+1);
 
-int main(int argc, char** argv) {
-    // Render (and most cloud platforms) inject a PORT environment variable.
-    // Prefer it over the command-line argument; fall back to 8080 for local use.
-    int port = 8080;
-    if (const char* envPort = std::getenv("PORT")) port = std::atoi(envPort);
-    else if (argc > 1) port = std::atoi(argv[1]);
-    if (argc > 2) frontendDir = argv[2];
-    else {
-        for (const char* guess : {"frontend", "../frontend", "../../frontend"}) {
-            std::string tmp;
-            if (readFile(std::string(guess) + "/index.html", tmp)) { frontendDir = guess; break; }
+    std::string body, ct = "application/json";
+    int status = 200;
+
+    if (path == "/api/state") {
+        body = sim.json();
+    } else if (path == "/api/step") {
+        int n = qs.empty() ? 1 : std::max(1, std::atoi(qparam(qs,"n").c_str()));
+        for (int i = 0; i < n; i++) sim.step();
+        body = sim.json();
+    } else if (path == "/api/reset") {
+        sim.reset();
+        body = sim.json();
+    } else if (path == "/api/set") {
+        // ?dir=0&arr=2   — set arrival rate for direction
+        // ?dir=0&add=10  — manually add cars to a direction's queue
+        int dir = std::atoi(qparam(qs,"dir").c_str());
+        if (dir >= 0 && dir < 4) {
+            auto a   = qparam(qs,"arr");
+            auto add = qparam(qs,"add");
+            if (!a.empty())   sim.arr[dir] = std::clamp(std::atoi(a.c_str()), 0, 5);
+            if (!add.empty()) sim.q[dir] = std::max(0, sim.q[dir] + std::atoi(add.c_str()));
+        }
+        body = sim.json();
+    } else {
+        std::string rel = (path == "/" || path.empty()) ? "/index.html" : path;
+        if (rel.find("..") != std::string::npos) {
+            status = 403; body = "Forbidden"; ct = "text/plain";
+        } else if (!readFile("frontend" + rel, body)) {
+            status = 404; body = "Not found"; ct = "text/plain";
+        } else {
+            ct = mime(rel);
         }
     }
-    if (frontendDir.empty()) {
-        std::fprintf(stderr, "Could not find the frontend folder. Run from the project folder, or pass it: server 8080 path/to/frontend\n");
-        return 1;
-    }
 
-    return runServer(port, [](const HttpRequest& req) -> HttpResponse {
-        if (req.method != "GET") return {400, "text/plain", "Only GET is supported"};
-        if (req.path == "/api/scenarios") return handleScenarios();
-        if (req.path == "/api/simulate") return handleSimulate(req.query);
-        if (req.path == "/api/query") return handleQuery(req.query);
-        return handleStatic(req.path);
-    });
+    return "HTTP/1.1 " + std::to_string(status) + " OK\r\n"
+           "Content-Type: "   + ct   + "\r\n"
+           "Content-Length: " + std::to_string(body.size()) + "\r\n"
+           "Access-Control-Allow-Origin: *\r\n"
+           "Cache-Control: no-store\r\n"
+           "Connection: close\r\n\r\n" + body;
+}
+
+// ── Entry point ───────────────────────────────────────────────────────────────
+int main(int argc, char** argv) {
+    netInit();
+    int port = 8080;
+    if (const char* ep = std::getenv("PORT")) port = std::atoi(ep);
+    else if (argc > 1) port = std::atoi(argv[1]);
+
+    sock_t srv = socket(AF_INET, SOCK_STREAM, 0);
+    int yes = 1;
+    setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, (const char*)&yes, sizeof yes);
+    sockaddr_in addr{};
+    addr.sin_family      = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_port        = htons((unsigned short)port);
+    if (bind(srv, (sockaddr*)&addr, sizeof addr) != 0) {
+        fputs("Port busy\n", stderr); return 1;
+    }
+    listen(srv, 8);
+    printf("Running at http://localhost:%d\n", port);
+    fflush(stdout);
+
+    for (;;) {
+        sock_t cl = accept(srv, nullptr, nullptr);
+        if (cl == INVALID_SOCKET) continue;
+        char buf[4096] = {};
+        int n = (int)recv(cl, buf, sizeof buf - 1, 0);
+        if (n > 0) {
+            buf[n] = '\0';
+            auto resp = handle(buf);
+            send(cl, resp.c_str(), (int)resp.size(), 0);
+        }
+        CLOSE(cl);
+    }
 }

@@ -1,109 +1,157 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Traffic Signal Optimization Simulator</title>
-  <link rel="stylesheet" href="styles/main.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Traffic Signal Optimizer</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0f0f0f;color:#e0e0e0;font-family:system-ui,sans-serif;
+       display:flex;flex-direction:column;align-items:center;padding:30px 16px;gap:24px;min-height:100vh}
+  h1{font-size:1.2rem;letter-spacing:1px;font-weight:600;color:#fff}
+  #clock{font-size:.85rem;color:#555}
+
+  /* Intersection grid */
+  .grid{display:grid;grid-template-areas:". N ." "W C E" ". S .";
+        grid-template-columns:120px 140px 120px;grid-template-rows:120px 140px 120px;gap:6px}
+  .box{display:flex;flex-direction:column;align-items:center;justify-content:center;
+       gap:5px;border-radius:10px;background:#161616;border:2px solid #2a2a2a;padding:10px}
+  .box.green{border-color:#22c55e;background:#052e16}
+  .box .lbl{font-size:.65rem;color:#555;text-transform:uppercase;letter-spacing:1px}
+  .box .cnt{font-size:2.2rem;font-weight:700;color:#e0e0e0}
+  .box.green .cnt{color:#22c55e}
+  .box .rate{font-size:.65rem;color:#444}
+  #N{grid-area:N} #S{grid-area:S} #E{grid-area:E} #W{grid-area:W}
+
+  /* Center box */
+  #center{grid-area:C;border-color:#333;flex-direction:column;gap:2px}
+  #phase-lbl{font-size:.7rem;color:#555;text-transform:uppercase;letter-spacing:1px}
+  #phase{font-size:1.1rem;font-weight:700}
+  #timer{font-size:2rem;font-weight:700;color:#22c55e}
+  #timer-lbl{font-size:.65rem;color:#444}
+
+  /* Controls */
+  .controls{display:flex;gap:8px}
+  button{padding:8px 18px;border-radius:6px;border:none;cursor:pointer;font-size:.85rem;font-weight:600;transition:opacity .15s}
+  button:hover{opacity:.8}
+  .primary{background:#22c55e;color:#000}
+  .secondary{background:#222;color:#ccc;border:1px solid #333}
+
+  /* Arrival rate controls */
+  .rates{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;width:100%;max-width:440px}
+  .rate-ctrl{display:flex;flex-direction:column;align-items:center;gap:5px}
+  .rate-ctrl label{font-size:.7rem;color:#555}
+  .rate-ctrl input{width:100%;text-align:center;background:#161616;border:1px solid #2a2a2a;
+                   color:#e0e0e0;padding:5px;border-radius:5px;font-size:.9rem}
+
+  .legend{font-size:.72rem;color:#444;text-align:center;max-width:380px;line-height:1.6}
+  .tag{display:inline-block;background:#1a2e1a;color:#22c55e;padding:1px 6px;border-radius:4px;font-size:.65rem;margin-right:4px}
+</style>
 </head>
 <body>
-  <header class="top">
-    <div>
-      <h1>Traffic Signal Optimization Simulator</h1>
-      <p class="muted">Educational model of one four-way intersection. Simulation runs in C++; this page only displays it. Not for controlling real signals.</p>
-    </div>
-    <div class="top-controls">
-      <label>Scenario
-        <select id="scenario"></select>
-      </label>
-      <span class="status" id="status" role="status">Ready</span>
-      <button type="button" id="reset-top">Reset</button>
-    </div>
-  </header>
-  <p class="field-error" id="backend-error" role="alert"></p>
-  <p class="scenario-note muted" id="scenario-note"></p>
 
-  <main class="layout">
-    <section class="stage" aria-labelledby="h-intersection">
-      <div class="stage-head">
-        <h2 id="h-intersection">Intersection 4</h2>
-        <span class="clock" id="clock">0 / 180 s</span>
-      </div>
-      <svg id="intersection" viewBox="0 0 400 400" role="img" aria-labelledby="intersection-desc"></svg>
-      <p class="sr-only" id="intersection-desc"></p>
+<h1>🚦 Traffic Signal Optimizer</h1>
+<div id="clock">t = 0 s</div>
 
-      <div class="transport" role="group" aria-label="Simulation controls">
-        <button type="button" id="start" class="primary-outline">Start</button>
-        <button type="button" id="pause">Pause</button>
-        <button type="button" id="step">Step 1 s</button>
-        <button type="button" id="reset">Reset</button>
-        <label class="speed">Speed
-          <select id="speed">
-            <option value="1">1×</option>
-            <option value="2">2×</option>
-            <option value="5" selected>5×</option>
-            <option value="10">10×</option>
-            <option value="25">25×</option>
-          </select>
-        </label>
-      </div>
-      <p class="hint muted">Keys: Space starts or pauses, → steps one second.</p>
+<div class="grid">
+  <div class="box" id="N">
+    <span class="lbl">North</span>
+    <span class="cnt" id="qN">5</span>
+    <span class="rate" id="aN">1 car/s</span>
+  </div>
+  <div class="box" id="W">
+    <span class="lbl">West</span>
+    <span class="cnt" id="qW">5</span>
+    <span class="rate" id="aW">1 car/s</span>
+  </div>
+  <div class="box" id="center">
+    <span id="phase-lbl">green phase</span>
+    <span id="phase">N – S</span>
+    <span id="timer">10</span>
+    <span id="timer-lbl">sec left</span>
+  </div>
+  <div class="box" id="E">
+    <span class="lbl">East</span>
+    <span class="cnt" id="qE">5</span>
+    <span class="rate" id="aE">1 car/s</span>
+  </div>
+  <div class="box" id="S">
+    <span class="lbl">South</span>
+    <span class="cnt" id="qS">5</span>
+    <span class="rate" id="aS">1 car/s</span>
+  </div>
+</div>
 
-      <h3>Total queue over time</h3>
-      <div id="chart"></div>
-    </section>
+<div class="controls">
+  <button class="primary" id="btn">▶ Start</button>
+  <button class="secondary" onclick="step()">Step 1s</button>
+  <button class="secondary" onclick="reset()">Reset</button>
+</div>
 
-    <div class="side">
-      <section aria-labelledby="h-queues">
-        <h2 id="h-queues">Queues</h2>
-        <table class="queues">
-          <thead>
-            <tr>
-              <th scope="col">Approach</th>
-              <th scope="col" class="num">Cars</th>
-              <th scope="col" class="bar-col"><span class="sr-only">Queue bar</span></th>
-              <th scope="col" class="num">Red for</th>
-            </tr>
-          </thead>
-          <tbody id="queue-rows"></tbody>
-        </table>
-        <p class="field-error" id="queue-error" role="alert"></p>
-      </section>
+<div class="rates">
+  <div class="rate-ctrl"><label>N arrivals/s</label><input type="number" id="r0" min="0" max="5" value="1" onchange="setArr(0,this.value)"></div>
+  <div class="rate-ctrl"><label>S arrivals/s</label><input type="number" id="r1" min="0" max="5" value="1" onchange="setArr(1,this.value)"></div>
+  <div class="rate-ctrl"><label>E arrivals/s</label><input type="number" id="r2" min="0" max="5" value="1" onchange="setArr(2,this.value)"></div>
+  <div class="rate-ctrl"><label>W arrivals/s</label><input type="number" id="r3" min="0" max="5" value="1" onchange="setArr(3,this.value)"></div>
+</div>
 
-      <section aria-labelledby="h-controller">
-        <h2 id="h-controller">Controller</h2>
-        <div class="controller-row">
-          <label>Strategy
-            <select id="strategy">
-              <option value="fixed">Fixed-time (baseline)</option>
-              <option value="greedy">Greedy + priority queue</option>
-            </select>
-          </label>
-          <button type="button" id="optimize" class="primary">Optimize signals</button>
-        </div>
-        <p id="signal-now" class="signal-now"></p>
-        <p id="signal-next" class="muted"></p>
-        <p id="message" class="message" role="status"></p>
-      </section>
+<div class="legend">
+  <span class="tag">Greedy + Priority Queue</span>
+  When green ends, the phase (N–S or E–W) with more waiting cars wins the next green.
+  Green duration = 5 + queue/2 seconds, capped at 30 s.
+</div>
 
-      <section aria-labelledby="h-metrics">
-        <h2 id="h-metrics">This run</h2>
-        <dl class="metrics" id="metrics"></dl>
-      </section>
-    </div>
-  </main>
+<script>
+const DIRS = ['N','S','E','W'];
+let timer = null;
 
+async function api(url) {
+  const r = await fetch(url);
+  return r.json();
+}
 
+function update(s) {
+  document.getElementById('clock').textContent = `t = ${s.t} s`;
+  document.getElementById('phase').textContent = s.phase === 0 ? 'N – S' : 'E – W';
+  document.getElementById('timer').textContent = s.timer;
 
-  <noscript><p>This simulator needs JavaScript.</p></noscript>
-  <script>
-    // Opened by double-clicking? Browsers block the app's scripts on file:// and there is no C++ server to talk to.
-    if (location.protocol === 'file:') {
-      var box = document.getElementById('backend-error');
-      box.innerHTML = 'This page was opened as a file, so it cannot reach the C++ server. ' +
-        'Close it, double-click <b>run.bat</b> in the project folder, and use the page it opens at http://localhost:8080.';
-    }
-  </script>
-  <script type="module" src="js/app.js"></script>
+  const green = s.phase === 0 ? ['N','S'] : ['E','W'];
+  DIRS.forEach((d, i) => {
+    document.getElementById('q' + d).textContent = s.q[i];
+    document.getElementById('a' + d).textContent = `${s.arr[i]} car/s`;
+    const box = document.getElementById(d);
+    box.className = 'box' + (green.includes(d) ? ' green' : '');
+  });
+}
+
+async function step() { update(await api('/api/step')); }
+
+async function reset() {
+  stop();
+  document.getElementById('btn').textContent = '▶ Start';
+  update(await api('/api/reset'));
+  // sync sliders back to defaults
+  DIRS.forEach((_, i) => document.getElementById('r' + i).value = 1);
+}
+
+function stop() { clearInterval(timer); timer = null; }
+
+document.getElementById('btn').addEventListener('click', () => {
+  if (timer) {
+    stop();
+    document.getElementById('btn').textContent = '▶ Start';
+  } else {
+    timer = setInterval(step, 800);
+    document.getElementById('btn').textContent = '⏸ Pause';
+  }
+});
+
+async function setArr(dir, val) {
+  update(await api(`/api/set?dir=${dir}&arr=${val}`));
+}
+
+// load initial state
+api('/api/state').then(update);
+</script>
 </body>
 </html>

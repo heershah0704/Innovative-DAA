@@ -1,5 +1,0 @@
-services:
-  - type: web
-    name: traffic-signal-simulator
-    env: docker
-    healthCheckPath: /api/scenarios
