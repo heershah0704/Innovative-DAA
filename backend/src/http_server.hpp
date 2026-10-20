@@ -104,7 +104,7 @@ inline int runServer(int port, const std::function<HttpResponse(const HttpReques
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);  // only reachable from this computer
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);   // listen on all interfaces (required for Render/cloud)
     addr.sin_port = htons(static_cast<unsigned short>(port));
     if (bind(server, reinterpret_cast<sockaddr*>(&addr), sizeof addr) != 0) {
         std::fprintf(stderr, "Port %d is busy. Try: server %d\n", port, port + 1);

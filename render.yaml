@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: traffic-signal-simulator
+    env: native
+    buildCommand: g++ -std=c++17 -O2 -Wall -Wextra -o server backend/src/main.cpp
+    startCommand: ./server
+    healthCheckPath: /api/scenarios

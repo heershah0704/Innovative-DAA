@@ -282,7 +282,11 @@ static HttpResponse handleStatic(const std::string& path) {
 }
 
 int main(int argc, char** argv) {
-    int port = argc > 1 ? std::atoi(argv[1]) : 8080;
+    // Render (and most cloud platforms) inject a PORT environment variable.
+    // Prefer it over the command-line argument; fall back to 8080 for local use.
+    int port = 8080;
+    if (const char* envPort = std::getenv("PORT")) port = std::atoi(envPort);
+    else if (argc > 1) port = std::atoi(argv[1]);
     if (argc > 2) frontendDir = argv[2];
     else {
         for (const char* guess : {"frontend", "../frontend", "../../frontend"}) {
