@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Traffic Signal Optimization Simulator</title>
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Traffic Signal Optimization Simulator</h1>
+      <p class="muted">Educational model of one four-way intersection. Simulation runs in C++; this page only displays it. Not for controlling real signals.</p>
+    </div>
+    <div class="top-controls">
+      <label>Scenario
+        <select id="scenario"></select>
+      </label>
+      <span class="status" id="status" role="status">Ready</span>
+      <button type="button" id="reset-top">Reset</button>
+    </div>
+  </header>
+  <p class="field-error" id="backend-error" role="alert"></p>
+  <p class="scenario-note muted" id="scenario-note"></p>
+
+  <main class="layout">
+    <section class="stage" aria-labelledby="h-intersection">
+      <div class="stage-head">
+        <h2 id="h-intersection">Intersection 4</h2>
+        <span class="clock" id="clock">0 / 180 s</span>
+      </div>
+      <svg id="intersection" viewBox="0 0 400 400" role="img" aria-labelledby="intersection-desc"></svg>
+      <p class="sr-only" id="intersection-desc"></p>
+
+      <div class="transport" role="group" aria-label="Simulation controls">
+        <button type="button" id="start" class="primary-outline">Start</button>
+        <button type="button" id="pause">Pause</button>
+        <button type="button" id="step">Step 1 s</button>
+        <button type="button" id="reset">Reset</button>
+        <label class="speed">Speed
+          <select id="speed">
+            <option value="1">1×</option>
+            <option value="2">2×</option>
+            <option value="5" selected>5×</option>
+            <option value="10">10×</option>
+            <option value="25">25×</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint muted">Keys: Space starts or pauses, → steps one second.</p>
+
+      <h3>Total queue over time</h3>
+      <div id="chart"></div>
+    </section>
+
+    <div class="side">
+      <section aria-labelledby="h-queues">
+        <h2 id="h-queues">Queues</h2>
+        <table class="queues">
+          <thead>
+            <tr>
+              <th scope="col">Approach</th>
+              <th scope="col" class="num">Cars</th>
+              <th scope="col" class="bar-col"><span class="sr-only">Queue bar</span></th>
+              <th scope="col" class="num">Red for</th>
+            </tr>
+          </thead>
+          <tbody id="queue-rows"></tbody>
+        </table>
+        <p class="field-error" id="queue-error" role="alert"></p>
+      </section>
+
+      <section aria-labelledby="h-controller">
+        <h2 id="h-controller">Controller</h2>
+        <div class="controller-row">
+          <label>Strategy
+            <select id="strategy">
+              <option value="fixed">Fixed-time (baseline)</option>
+              <option value="greedy">Greedy + priority queue</option>
+            </select>
+          </label>
+          <button type="button" id="optimize" class="primary">Optimize signals</button>
+        </div>
+        <p id="signal-now" class="signal-now"></p>
+        <p id="signal-next" class="muted"></p>
+        <p id="message" class="message" role="status"></p>
+      </section>
+
+      <section aria-labelledby="h-metrics">
+        <h2 id="h-metrics">This run</h2>
+        <dl class="metrics" id="metrics"></dl>
+      </section>
+    </div>
+  </main>
+
+
+
+  <noscript><p>This simulator needs JavaScript.</p></noscript>
+  <script>
+    // Opened by double-clicking? Browsers block the app's scripts on file:// and there is no C++ server to talk to.
+    if (location.protocol === 'file:') {
+      var box = document.getElementById('backend-error');
+      box.innerHTML = 'This page was opened as a file, so it cannot reach the C++ server. ' +
+        'Close it, double-click <b>run.bat</b> in the project folder, and use the page it opens at http://localhost:8080.';
+    }
+  </script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
