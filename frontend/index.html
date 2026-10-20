@@ -1,156 +1,367 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Traffic Signal Optimizer</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#0f0f0f;color:#e0e0e0;font-family:system-ui,sans-serif;
-       display:flex;flex-direction:column;align-items:center;padding:30px 16px;gap:24px;min-height:100vh}
-  h1{font-size:1.2rem;letter-spacing:1px;font-weight:600;color:#fff}
-  #clock{font-size:.85rem;color:#555}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Traffic Signal Optimization Simulator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #111; --surface: #1a1a1a; --border: #2a2a2a;
+      --ink: #e8e8e8; --muted: #666;
+      --go: #22c55e; --slow: #eab308; --stop: #ef4444;
+      --road: #2d2d2d; --lane: #444; --car: #60a5fa;
+    }
+    body { background: var(--bg); color: var(--ink); font-family: system-ui, sans-serif; font-size: 14px; min-height: 100vh; }
 
-  /* Intersection grid */
-  .grid{display:grid;grid-template-areas:". N ." "W C E" ". S .";
-        grid-template-columns:120px 140px 120px;grid-template-rows:120px 140px 120px;gap:6px}
-  .box{display:flex;flex-direction:column;align-items:center;justify-content:center;
-       gap:5px;border-radius:10px;background:#161616;border:2px solid #2a2a2a;padding:10px}
-  .box.green{border-color:#22c55e;background:#052e16}
-  .box .lbl{font-size:.65rem;color:#555;text-transform:uppercase;letter-spacing:1px}
-  .box .cnt{font-size:2.2rem;font-weight:700;color:#e0e0e0}
-  .box.green .cnt{color:#22c55e}
-  .box .rate{font-size:.65rem;color:#444}
-  #N{grid-area:N} #S{grid-area:S} #E{grid-area:E} #W{grid-area:W}
+    /* Header */
+    .top { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border); gap: 16px; flex-wrap: wrap; }
+    .top h1 { font-size: 1rem; font-weight: 600; }
+    .top .muted { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+    .top-controls { display: flex; align-items: center; gap: 10px; }
+    .status { font-size: .75rem; padding: 3px 10px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); }
+    .status[data-state="running"] { border-color: var(--go); color: var(--go); }
 
-  /* Center box */
-  #center{grid-area:C;border-color:#333;flex-direction:column;gap:2px}
-  #phase-lbl{font-size:.7rem;color:#555;text-transform:uppercase;letter-spacing:1px}
-  #phase{font-size:1.1rem;font-weight:700}
-  #timer{font-size:2rem;font-weight:700;color:#22c55e}
-  #timer-lbl{font-size:.65rem;color:#444}
+    /* Layout */
+    .layout { display: grid; grid-template-columns: 1fr 330px; min-height: calc(100vh - 57px); }
+    .stage { padding: 16px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 14px; }
+    .side  { padding: 16px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
 
-  /* Controls */
-  .controls{display:flex;gap:8px}
-  button{padding:8px 18px;border-radius:6px;border:none;cursor:pointer;font-size:.85rem;font-weight:600;transition:opacity .15s}
-  button:hover{opacity:.8}
-  .primary{background:#22c55e;color:#000}
-  .secondary{background:#222;color:#ccc;border:1px solid #333}
+    /* Stage */
+    .stage-head { display: flex; align-items: center; justify-content: space-between; }
+    .stage-head h2 { font-size: .9rem; font-weight: 600; }
+    .clock { font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+    #intersection { width: 100%; max-width: 400px; align-self: center; }
 
-  /* Arrival rate controls */
-  .rates{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;width:100%;max-width:440px}
-  .rate-ctrl{display:flex;flex-direction:column;align-items:center;gap:5px}
-  .rate-ctrl label{font-size:.7rem;color:#555}
-  .rate-ctrl input{width:100%;text-align:center;background:#161616;border:1px solid #2a2a2a;
-                   color:#e0e0e0;padding:5px;border-radius:5px;font-size:.9rem}
+    /* Controls */
+    .transport { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    button { padding: 6px 14px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); cursor: pointer; font-size: .8rem; transition: background .15s; }
+    button:hover { background: #252525; }
+    button.primary { background: #14532d; border-color: var(--go); color: var(--go); }
+    button.primary:hover { background: #166534; }
+    .speed-label { font-size: .8rem; color: var(--muted); }
+    select { background: var(--surface); border: 1px solid var(--border); color: var(--ink); padding: 4px 6px; border-radius: 4px; font-size: .8rem; }
+    .hint { font-size: .72rem; color: var(--muted); }
 
-  .legend{font-size:.72rem;color:#444;text-align:center;max-width:380px;line-height:1.6}
-  .tag{display:inline-block;background:#1a2e1a;color:#22c55e;padding:1px 6px;border-radius:4px;font-size:.65rem;margin-right:4px}
-</style>
+    /* Chart */
+    #chart { min-height: 80px; }
+    #chart svg { width: 100%; height: 80px; display: block; }
+
+    /* Side headings */
+    h2 { font-size: .85rem; font-weight: 600; }
+    h3 { font-size: .75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+
+    /* Queue table */
+    .queues { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    .queues th, .queues td { padding: 5px 6px; text-align: left; border-bottom: 1px solid var(--border); }
+    .queues th { color: var(--muted); font-weight: 500; font-size: .72rem; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .bar-col { width: 80px; }
+    .bar { height: 10px; background: var(--border); border-radius: 3px; }
+    .bar span { display: block; height: 100%; background: var(--stop); border-radius: 3px; transition: width .4s; }
+    .bar.moving span { background: var(--go); }
+
+    /* Signal */
+    .signal-now { display: flex; align-items: center; gap: 8px; font-size: .9rem; font-weight: 600; margin-top: 4px; }
+    .lamp { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .lamp.green { background: var(--go); box-shadow: 0 0 8px var(--go); }
+    .lamp.red   { background: var(--stop); }
+
+    /* Metrics */
+    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .metrics > div { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+    .metrics dt { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+    .metrics dd { font-size: 1.1rem; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+    /* Arrival rates */
+    .arr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .arr-row  { display: flex; align-items: center; justify-content: space-between; font-size: .78rem; gap: 6px; }
+    .arr-row input { width: 52px; background: var(--surface); border: 1px solid var(--border); color: var(--ink); padding: 3px 6px; border-radius: 4px; text-align: center; font-size: .8rem; }
+
+    @media (max-width: 680px) {
+      .layout { grid-template-columns: 1fr; }
+      .stage { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
 </head>
 <body>
 
-<h1>🚦 Traffic Signal Optimizer</h1>
-<div id="clock">t = 0 s</div>
+<header class="top">
+  <div>
+    <h1>Traffic Signal Optimization Simulator</h1>
+    <p class="muted">Greedy + priority queue — more waiting cars → longer green.</p>
+  </div>
+  <div class="top-controls">
+    <span class="status" id="status">Ready</span>
+    <button onclick="doReset()">Reset</button>
+  </div>
+</header>
 
-<div class="grid">
-  <div class="box" id="N">
-    <span class="lbl">North</span>
-    <span class="cnt" id="qN">5</span>
-    <span class="rate" id="aN">1 car/s</span>
-  </div>
-  <div class="box" id="W">
-    <span class="lbl">West</span>
-    <span class="cnt" id="qW">5</span>
-    <span class="rate" id="aW">1 car/s</span>
-  </div>
-  <div class="box" id="center">
-    <span id="phase-lbl">green phase</span>
-    <span id="phase">N – S</span>
-    <span id="timer">10</span>
-    <span id="timer-lbl">sec left</span>
-  </div>
-  <div class="box" id="E">
-    <span class="lbl">East</span>
-    <span class="cnt" id="qE">5</span>
-    <span class="rate" id="aE">1 car/s</span>
-  </div>
-  <div class="box" id="S">
-    <span class="lbl">South</span>
-    <span class="cnt" id="qS">5</span>
-    <span class="rate" id="aS">1 car/s</span>
-  </div>
-</div>
+<main class="layout">
 
-<div class="controls">
-  <button class="primary" id="btn">▶ Start</button>
-  <button class="secondary" onclick="step()">Step 1s</button>
-  <button class="secondary" onclick="reset()">Reset</button>
-</div>
+  <!-- Left: SVG + controls + chart -->
+  <section class="stage">
+    <div class="stage-head">
+      <h2>Intersection</h2>
+      <span class="clock" id="clock">0 / — s</span>
+    </div>
 
-<div class="rates">
-  <div class="rate-ctrl"><label>N arrivals/s</label><input type="number" id="r0" min="0" max="5" value="1" onchange="setArr(0,this.value)"></div>
-  <div class="rate-ctrl"><label>S arrivals/s</label><input type="number" id="r1" min="0" max="5" value="1" onchange="setArr(1,this.value)"></div>
-  <div class="rate-ctrl"><label>E arrivals/s</label><input type="number" id="r2" min="0" max="5" value="1" onchange="setArr(2,this.value)"></div>
-  <div class="rate-ctrl"><label>W arrivals/s</label><input type="number" id="r3" min="0" max="5" value="1" onchange="setArr(3,this.value)"></div>
-</div>
+    <svg id="intersection" viewBox="0 0 400 400" role="img" aria-label="Intersection diagram"></svg>
 
-<div class="legend">
-  <span class="tag">Greedy + Priority Queue</span>
-  When green ends, the phase (N–S or E–W) with more waiting cars wins the next green.
-  Green duration = 5 + queue/2 seconds, capped at 30 s.
-</div>
+    <div class="transport">
+      <button class="primary" id="btn">Start</button>
+      <button onclick="doStep()">Step 1 s</button>
+      <button onclick="doReset()">Reset</button>
+      <label class="speed-label">Speed
+        <select id="speed">
+          <option value="1000">1×</option>
+          <option value="500">2×</option>
+          <option value="200" selected>5×</option>
+          <option value="100">10×</option>
+        </select>
+      </label>
+    </div>
+    <p class="hint">Keys: Space starts or pauses, → steps one second.</p>
+
+    <h3>Total queue over time</h3>
+    <div id="chart"></div>
+  </section>
+
+  <!-- Right: queues + signal + metrics + rates -->
+  <div class="side">
+
+    <section>
+      <h2>Queues</h2>
+      <table class="queues">
+        <thead>
+          <tr>
+            <th>Approach</th>
+            <th class="num">Cars</th>
+            <th class="bar-col"></th>
+            <th class="num">Red for</th>
+          </tr>
+        </thead>
+        <tbody id="queue-rows"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Controller</h2>
+      <p style="font-size:.78rem;color:var(--muted)">Strategy: Greedy priority queue</p>
+      <div class="signal-now" id="signal-now"></div>
+      <p id="signal-next" style="font-size:.75rem;color:var(--muted);margin-top:5px"></p>
+    </section>
+
+    <section>
+      <h2>This run</h2>
+      <dl class="metrics" id="metrics"></dl>
+    </section>
+
+    <section>
+      <h2>Arrival rates (cars / s)</h2>
+      <div class="arr-grid" id="arr-inputs"></div>
+    </section>
+
+  </div>
+</main>
 
 <script>
-const DIRS = ['N','S','E','W'];
-let timer = null;
+// ── constants ────────────────────────────────────────────────────────────────
+const DIRS  = ['N','S','E','W'];
+const NAMES = {N:'North', S:'South', E:'East', W:'West'};
+const greenDirs = s => s.phase === 0 ? ['N','S'] : ['E','W'];
 
-async function api(url) {
-  const r = await fetch(url);
-  return r.json();
-}
+// ── live stats (accumulated client-side) ─────────────────────────────────────
+let history  = [];
+let redFor   = {N:0, S:0, E:0, W:0};
+let totalWait = 0, totalServed = 0, peakQ = 0;
+let prev = null, ticker = null;
 
+// ── API ───────────────────────────────────────────────────────────────────────
+const api = url => fetch(url).then(r => r.json());
+
+// ── update UI ─────────────────────────────────────────────────────────────────
 function update(s) {
-  document.getElementById('clock').textContent = `t = ${s.t} s`;
-  document.getElementById('phase').textContent = s.phase === 0 ? 'N – S' : 'E – W';
-  document.getElementById('timer').textContent = s.timer;
+  const gd  = greenDirs(s);
+  const qs  = DIRS.map((_,i) => s.q[i]);
+  const tot = qs.reduce((a,b)=>a+b,0);
 
-  const green = s.phase === 0 ? ['N','S'] : ['E','W'];
+  // accumulate stats
+  history.push(tot);
+  if (tot > peakQ) peakQ = tot;
+  DIRS.forEach(d => { if (gd.includes(d)) redFor[d] = 0; else redFor[d]++; });
+  if (prev) {
+    greenDirs(prev).forEach(d => {
+      const i = DIRS.indexOf(d);
+      const served = Math.max(0, prev.q[i] + prev.arr[i] - s.q[i]);
+      totalServed += served;
+      totalWait   += redFor[d] * served;
+    });
+  }
+  prev = s;
+
+  // header
+  document.getElementById('clock').textContent = `${s.t} s`;
+
+  // intersection SVG
+  document.getElementById('intersection').innerHTML = buildSVG(s);
+
+  // queue table
+  const scale = Math.max(40, ...qs);
+  document.getElementById('queue-rows').innerHTML = DIRS.map((d,i) => {
+    const q = qs[i], moving = gd.includes(d);
+    const pct = scale > 0 ? Math.min(100, (q/scale)*100) : 0;
+    const redCell = moving
+      ? `<span style="color:var(--go)">green now</span>`
+      : `${redFor[d]} s`;
+    return `<tr>
+      <th scope="row">${NAMES[d]}</th>
+      <td class="num">${q}</td>
+      <td><div class="bar${moving?' moving':''}"><span style="width:${pct}%"></span></div></td>
+      <td class="num" style="font-size:.75rem">${redCell}</td>
+    </tr>`;
+  }).join('');
+
+  // signal
+  const phaseLabel = s.phase===0 ? 'North–South' : 'East–West';
+  document.getElementById('signal-now').innerHTML =
+    `<span class="lamp green"></span>${phaseLabel} green — ${s.timer} s remaining`;
+  document.getElementById('signal-next').textContent =
+    `When timer hits 0, the phase with more waiting cars wins the next green.`;
+
+  // metrics
+  const avg = totalServed > 0 ? (totalWait/totalServed).toFixed(1)+' s' : 'N/A';
+  document.getElementById('metrics').innerHTML = [
+    ['Avg wait', avg],
+    ['Vehicles served', totalServed],
+    ['Peak total queue', peakQ],
+    ['Elapsed', s.t + ' s'],
+  ].map(([k,v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+
+  // chart
+  renderChart();
+}
+
+// ── SVG intersection ─────────────────────────────────────────────────────────
+const PITCH = 13;
+const carPos = {
+  N:(i,c)=>({x:147+c*30, y:122-i*PITCH, w:16, h:10}),
+  S:(i,c)=>({x:207+c*30, y:268+i*PITCH, w:16, h:10}),
+  E:(i,c)=>({x:268+i*PITCH, y:147+c*30, w:10, h:16}),
+  W:(i,c)=>({x:122-i*PITCH, y:207+c*30, w:10, h:16}),
+};
+const headPos = {N:[128,124], S:[272,276], E:[276,128], W:[124,272]};
+const lblPos  = {
+  N:{x:128,y:24,a:'end'}, E:{x:392,y:24,a:'end'},
+  S:{x:272,y:368,a:'start'}, W:{x:8,y:290,a:'start'},
+};
+const LAMP_CSS = {green:'var(--go)', red:'var(--stop)'};
+
+function buildSVG(s) {
+  const p = [];
+  const dash = `stroke="var(--lane)" stroke-width="2" stroke-dasharray="10 8"`;
+  const sln  = `stroke="var(--lane)" stroke-width="3"`;
+  p.push(`<rect x="140" y="0" width="120" height="400" fill="var(--road)"/>`);
+  p.push(`<rect x="0" y="140" width="400" height="120" fill="var(--road)"/>`);
+  p.push(`<line x1="200" y1="0"   x2="200" y2="136" ${dash}/><line x1="200" y1="264" x2="200" y2="400" ${dash}/>`);
+  p.push(`<line x1="0"   y1="200" x2="136" y2="200" ${dash}/><line x1="264" y1="200" x2="400" y2="200" ${dash}/>`);
+  p.push(`<line x1="140" y1="136" x2="200" y2="136" ${sln}/><line x1="200" y1="264" x2="260" y2="264" ${sln}/>`);
+  p.push(`<line x1="264" y1="140" x2="264" y2="200" ${sln}/><line x1="136" y1="200" x2="136" y2="260" ${sln}/>`);
+
+  const gd = greenDirs(s);
   DIRS.forEach((d, i) => {
-    document.getElementById('q' + d).textContent = s.q[i];
-    document.getElementById('a' + d).textContent = `${s.arr[i]} car/s`;
-    const box = document.getElementById(d);
-    box.className = 'box' + (green.includes(d) ? ' green' : '');
+    const q = s.q[i], shown = Math.min(q, 18);
+    for (let k=0; k<shown; k++) {
+      const {x,y,w,h} = carPos[d](Math.floor(k/2), k%2);
+      p.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="var(--car)"/>`);
+    }
+    const st = gd.includes(d) ? 'green' : 'red';
+    const [hx,hy] = headPos[d];
+    p.push(`<circle cx="${hx}" cy="${hy}" r="8" fill="${LAMP_CSS[st]}"/>`);
+    p.push(`<text x="${hx}" y="${hy+3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${st==='green'?'G':'R'}</text>`);
+    const L = lblPos[d];
+    const word = st==='green' ? 'go' : 'stop';
+    p.push(`<text x="${L.x}" y="${L.y}"    text-anchor="${L.a}" font-size="12" fill="var(--muted)">${NAMES[d]}, ${word}</text>`);
+    p.push(`<text x="${L.x}" y="${L.y+20}" text-anchor="${L.a}" font-size="17" font-weight="600" fill="var(--ink)">${q} car${q===1?'':'s'}</text>`);
   });
+
+  const label = s.phase===0 ? 'N–S' : 'E–W';
+  p.push(`<text x="200" y="196" text-anchor="middle" font-size="18" font-weight="600" fill="var(--ink)">${label}</text>`);
+  p.push(`<text x="200" y="216" text-anchor="middle" font-size="12" fill="var(--ink)">green, ${s.timer} s</text>`);
+  return p.join('');
 }
 
-async function step() { update(await api('/api/step')); }
+// ── Chart ────────────────────────────────────────────────────────────────────
+function renderChart() {
+  const el = document.getElementById('chart');
+  if (history.length < 2) { el.innerHTML = ''; return; }
+  const W = el.clientWidth || 400, H = 80;
+  const max = Math.max(1, ...history);
+  const pts = history.map((v,i) =>
+    `${(i/(history.length-1))*W},${H - (v/max)*(H-4)}`
+  ).join(' ');
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <polyline points="${pts}" fill="none" stroke="var(--go)" stroke-width="1.5"/>
+  </svg>`;
+}
 
-async function reset() {
-  stop();
-  document.getElementById('btn').textContent = '▶ Start';
+// ── Controls ──────────────────────────────────────────────────────────────────
+async function doStep() {
+  const s = await api('/api/step');
+  update(s);
+  setStatus('Paused', '');
+}
+
+async function doReset() {
+  stopTicker();
+  history=[]; redFor={N:0,S:0,E:0,W:0}; totalWait=0; totalServed=0; peakQ=0; prev=null;
+  document.getElementById('btn').textContent = 'Start';
+  setStatus('Ready','');
   update(await api('/api/reset'));
-  // sync sliders back to defaults
-  DIRS.forEach((_, i) => document.getElementById('r' + i).value = 1);
 }
 
-function stop() { clearInterval(timer); timer = null; }
+function stopTicker() { clearInterval(ticker); ticker=null; }
+
+function setStatus(txt, state) {
+  const el = document.getElementById('status');
+  el.textContent = txt; el.dataset.state = state;
+}
 
 document.getElementById('btn').addEventListener('click', () => {
-  if (timer) {
-    stop();
-    document.getElementById('btn').textContent = '▶ Start';
+  if (ticker) {
+    stopTicker();
+    document.getElementById('btn').textContent = 'Resume';
+    setStatus('Paused','');
   } else {
-    timer = setInterval(step, 800);
-    document.getElementById('btn').textContent = '⏸ Pause';
+    const ms = Number(document.getElementById('speed').value);
+    ticker = setInterval(async () => { update(await api('/api/step')); }, ms);
+    document.getElementById('btn').textContent = 'Pause';
+    setStatus('Running','running');
   }
 });
 
-async function setArr(dir, val) {
-  update(await api(`/api/set?dir=${dir}&arr=${val}`));
-}
+document.getElementById('speed').addEventListener('change', function() {
+  if (!ticker) return;
+  stopTicker();
+  const ms = Number(this.value);
+  ticker = setInterval(async () => { update(await api('/api/step')); }, ms);
+});
 
-// load initial state
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input,select,button')) return;
+  if (e.key === ' ')          { e.preventDefault(); document.getElementById('btn').click(); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); doStep(); }
+});
+
+// ── Arrival rate inputs ───────────────────────────────────────────────────────
+document.getElementById('arr-inputs').innerHTML = DIRS.map((d,i) => `
+  <div class="arr-row">
+    <span>${NAMES[d]}</span>
+    <input type="number" min="0" max="5" value="1" step="1"
+      onchange="api('/api/set?dir=${i}&arr='+this.value).then(s=>{prev=null;update(s)})">
+  </div>`).join('');
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 api('/api/state').then(update);
 </script>
 </body>

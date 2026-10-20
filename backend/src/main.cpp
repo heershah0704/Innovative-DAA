@@ -68,7 +68,8 @@ struct Sim {
         // priority queue: the phase with the larger queue wins
         phase = (ew > ns) ? 1 : 0;
         int total = (phase == 0) ? ns : ew;
-        timer = std::clamp(5 + total / 2, MIN_GREEN, MAX_GREEN);
+        int raw = 5 + total / 2;
+        timer = raw < MIN_GREEN ? MIN_GREEN : raw > MAX_GREEN ? MAX_GREEN : raw;
     }
 
     // Serialize state to JSON
@@ -138,7 +139,7 @@ static std::string handle(const char* raw) {
         if (dir >= 0 && dir < 4) {
             auto a   = qparam(qs,"arr");
             auto add = qparam(qs,"add");
-            if (!a.empty())   sim.arr[dir] = std::clamp(std::atoi(a.c_str()), 0, 5);
+            if (!a.empty()) { int v=std::atoi(a.c_str()); sim.arr[dir]=v<0?0:v>5?5:v; }
             if (!add.empty()) sim.q[dir] = std::max(0, sim.q[dir] + std::atoi(add.c_str()));
         }
         body = sim.json();
