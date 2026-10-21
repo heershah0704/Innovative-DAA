@@ -91,6 +91,12 @@
     <p class="muted">4 independent signals · Greedy priority queue · Yellow clearance between phases</p>
   </div>
   <div class="top-controls">
+    <label style="font-size:.8rem;color:var(--muted)">Strategy
+      <select id="strategy">
+        <option value="greedy">Greedy + priority queue</option>
+        <option value="dp">Dynamic Programming</option>
+      </select>
+    </label>
     <span class="status" id="status">Ready</span>
     <button onclick="doReset()">Reset</button>
   </div>
@@ -131,7 +137,7 @@
     </section>
     <section>
       <h2>Signal</h2>
-      <p style="font-size:.78rem;color:var(--muted)">Strategy: Greedy priority queue (4 independent signals)</p>
+      <p id="strat-label" style="font-size:.78rem;color:var(--muted)">Strategy: Greedy priority queue (4 independent signals)</p>
       <div class="signal-now" id="signal-now"></div>
       <p id="signal-next" style="font-size:.75rem;color:var(--muted);margin-top:5px"></p>
     </section>
@@ -165,7 +171,15 @@ let totalWait=0, totalServed=0, peakQ=0;
 let prev=null, ticker=null;
 
 // ── API ───────────────────────────────────────────────────────────────────────
-const api = url => fetch(url).then(r=>r.json());
+let BASE = '';  // '' = greedy (same server, 8080); DP server runs on 8081
+const api = url => fetch(BASE+url).then(r=>r.json());
+document.getElementById('strategy').addEventListener('change', function(){
+  BASE = this.value==='dp' ? `http://${location.hostname||'localhost'}:8081` : '';
+  document.getElementById('strat-label').textContent = this.value==='dp'
+    ? 'Strategy: Dynamic Programming (Bellman equation + memoization, 3-phase lookahead)'
+    : 'Strategy: Greedy priority queue (4 independent signals)';
+  doReset().catch(()=>alert('DP server not running on port 8081. Start dp_server.exe'));
+});
 
 // ── update UI ─────────────────────────────────────────────────────────────────
 function update(s) {
@@ -221,8 +235,9 @@ function update(s) {
   } else {
     document.getElementById('signal-now').innerHTML=
       `<span class="lamp green"></span>${PHASE_NAMES[s.phase]} green — ${s.timer} s remaining`;
-    document.getElementById('signal-next').textContent=
-      `When timer hits 0 → 2 s yellow → direction with most waiting cars wins next green.`;
+    document.getElementById('signal-next').textContent = s.memo!==undefined
+      ? `DP: ${s.memo} sub-problems stored, ${s.hits} memo reuses, min future delay = ${s.cost} veh·s.`
+      : `When timer hits 0 → 2 s yellow → direction with most waiting cars wins next green.`;
   }
 
   // Metrics
