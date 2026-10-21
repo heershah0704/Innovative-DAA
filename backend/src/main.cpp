@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
+// <cstring> removed — not used
 #include <fstream>
 #include <random>
 #include <sstream>
@@ -46,10 +46,12 @@ struct Sim {
 
     // Advance one second of simulation
     void step() {
-        // Poisson arrivals for each direction
+        // FIX: guard arr[i]==0 — poisson_distribution requires mean > 0
         for (int i = 0; i < 4; i++) {
-            std::poisson_distribution<int> pd(arr[i]);
-            q[i] += pd(rng);
+            if (arr[i] > 0) {
+                std::poisson_distribution<int> pd(arr[i]);
+                q[i] += pd(rng);
+            }
         }
         // Serve the two green directions (N+S or E+W)
         int a = (phase == 0) ? 0 : 2;   // index of first green direction
@@ -59,14 +61,20 @@ struct Sim {
         if (--timer <= 0) switchPhase();
     }
 
+    int redTime[2] = {};  // seconds each phase has been red (starvation fix)
+
     // Greedy decision using a priority queue (max-heap):
-    // compare NS total vs EW total and grant green to the heavier side.
-    // Green time is proportional to the winner's queue.
+    // Priority = waiting cars + 0.5 * seconds_on_red  (prevents starvation).
+    // Green time proportional to winner's queue, clamped to [MIN_GREEN, MAX_GREEN].
     void switchPhase() {
         int ns = q[0] + q[1];
         int ew = q[2] + q[3];
-        // priority queue: the phase with the larger queue wins
-        phase = (ew > ns) ? 1 : 0;
+        // FIX starvation: weight red-time into priority so neither side waits forever
+        float scoreNS = ns + 0.5f * redTime[0];
+        float scoreEW = ew + 0.5f * redTime[1];
+        phase = (scoreEW > scoreNS) ? 1 : 0;
+        redTime[phase] = 0;          // winner resets its red counter
+        redTime[1-phase]++;          // loser accumulates more red time
         int total = (phase == 0) ? ns : ew;
         int raw = 5 + total / 2;
         timer = raw < MIN_GREEN ? MIN_GREEN : raw > MAX_GREEN ? MAX_GREEN : raw;
@@ -88,13 +96,22 @@ struct Sim {
 } sim;
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
+// FIX qparam: only match key at start of string or after '&' to avoid
+// matching "n=" inside "dn=" etc.
 static std::string qparam(const std::string& qs, const char* key) {
     std::string k = std::string(key) + "=";
-    auto pos = qs.find(k);
-    if (pos == std::string::npos) return "";
-    pos += k.size();
-    auto end = qs.find('&', pos);
-    return qs.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+    std::size_t pos = 0;
+    while (pos <= qs.size()) {
+        auto found = qs.find(k, pos);
+        if (found == std::string::npos) return "";
+        if (found == 0 || qs[found-1] == '&') {   // must be at boundary
+            pos = found + k.size();
+            auto end = qs.find('&', pos);
+            return qs.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+        }
+        pos = found + 1;
+    }
+    return "";
 }
 
 static bool readFile(const std::string& p, std::string& out) {
@@ -126,7 +143,9 @@ static std::string handle(const char* raw) {
     if (path == "/api/state") {
         body = sim.json();
     } else if (path == "/api/step") {
+        // FIX: cap n so a huge value can't hang the server
         int n = qs.empty() ? 1 : std::max(1, std::atoi(qparam(qs,"n").c_str()));
+        if (n > 10000) n = 10000;
         for (int i = 0; i < n; i++) sim.step();
         body = sim.json();
     } else if (path == "/api/reset") {
@@ -154,7 +173,9 @@ static std::string handle(const char* raw) {
         }
     }
 
-    return "HTTP/1.1 " + std::to_string(status) + " OK\r\n"
+    // FIX: correct status text for non-200 responses
+    const char* txt = (status==200)?"OK":(status==403)?"Forbidden":"Not Found";
+    return "HTTP/1.1 " + std::to_string(status) + " " + txt + "\r\n"
            "Content-Type: "   + ct   + "\r\n"
            "Content-Length: " + std::to_string(body.size()) + "\r\n"
            "Access-Control-Allow-Origin: *\r\n"
