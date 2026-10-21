@@ -1,7 +1,8 @@
 // Traffic Signal Optimizer — 4 independent signals, DYNAMIC PROGRAMMING
 // Same model/API as main.cpp (greedy) but switchPhase() uses DP:
 //   State : (k, q[N], q[S], q[E], q[W])   k = how many future phases already planned
-//   V(k,q) = min over (phase p, green d) [ cost(p,d,q) + V(k+1, q') ],  V(H,q) = 0
+//   V(k,q) = min over (phase p, green d) [ cost(p,d,q) + V(k+1, q') ]
+//   V(H,q) = TAIL * sum(q)   (tail cost: cars left at horizon still wait -> no myopia)
 //   cost   = sum of all waiting cars every second (= total vehicle-seconds of delay)
 //   Memo   : unordered_map<state,value>  → overlapping sub-problems solved once
 // Build(Win): g++ -std=c++17 -O2 -o dp_server.exe backend/src/dp_server.cpp -lws2_32
@@ -32,9 +33,10 @@
 #endif
 
 static const int SERVICE = 2, MIN_GREEN = 5, MAX_GREEN = 30, YELLOW_DUR = 2;
-static const int HORIZON = 3;                       // plan 3 phases ahead
-static const int DURS[] = {5, 10, 15, 20, 25, 30};  // candidate green lengths
-static const int MAX_RED = 60;                      // fairness guard (no starvation)
+static const int HORIZON = 4;                       // plan 4 phases ahead (lookahead)
+static const int DURS[] = {5, 10, 15, 20, 30};      // candidate green durations
+static const int TAIL_MULT = 20;                    // tail penalty: unserved cars still cost
+static const int MAX_RED = 60;                      // starvation guard
 
 struct Sim {
     int  q[4] = {5,5,5,5}, arr[4] = {1,1,1,1};
@@ -56,37 +58,41 @@ struct Sim {
         }
     }
 
-    // Simulate one block (green d for phase p, then yellow) with expected arrivals.
+    // Simulate one green block (d secs for dir p + yellow). Returns total delay.
     long block(int p, int d, int* nq) const {
         long cost = 0;
-        for (int s = 0; s < d + YELLOW_DUR; s++)
+        for (int s = 0; s < d + YELLOW_DUR; s++) {
             for (int i = 0; i < 4; i++) {
                 nq[i] += arr[i];
                 if (i == p && s < d) nq[i] = std::max(0, nq[i] - SERVICE);
-                nq[i] = std::min(nq[i], 1023);       // cap so state packs in 10 bits
+                nq[i] = std::min(nq[i], 1023);
                 cost += nq[i];
             }
+        }
         return cost;
     }
 
-    // Bellman recursion with memoization (top-down DP).
+    // Top-down DP: V(k,q) = min cost over remaining (HORIZON-k) phases.
     long V(int k, const int* cq) {
-        if (k == HORIZON) return 0;                  // base case
-        unsigned long long key = k;
+        if (k == HORIZON) return TAIL_MULT * (long)(cq[0]+cq[1]+cq[2]+cq[3]);
+        unsigned long long key = (unsigned long long)k;
         for (int i = 0; i < 4; i++) key = (key << 10) | (unsigned)cq[i];
         auto it = memo.find(key);
         if (it != memo.end()) { memoHits++; return it->second; }
         long best = -1;
-        for (int p = 0; p < 4; p++)
+        for (int p = 0; p < 4; p++) {
+            if (cq[p] == 0 && arr[p] == 0) continue;    // skip truly idle directions
             for (int d : DURS) {
                 int nq[4] = {cq[0], cq[1], cq[2], cq[3]};
                 long c = block(p, d, nq) + V(k + 1, nq);
                 if (best < 0 || c < best) best = c;
             }
+        }
+        if (best < 0) best = TAIL_MULT * (long)(cq[0]+cq[1]+cq[2]+cq[3]);
         return memo[key] = best;
     }
 
-    // DP decision: pick (phase, duration) minimising total future delay.
+    // DP phase switch: pick (phase,duration) minimising Bellman value V.
     void switchPhase() {
         memo.clear(); memoHits = 0;
         int bp = 0, bd = MIN_GREEN; long best = -1;
@@ -94,9 +100,13 @@ struct Sim {
         for (int i = 0; i < 4; i++) if (redTime[i] >= MAX_RED && q[i] > 0) starving = i;
         for (int p = 0; p < 4; p++) {
             if (starving >= 0 && p != starving) continue;
+            if (q[p] == 0 && arr[p] == 0) continue;  // skip idle dir
             for (int d : DURS) {
-                int nq[4] = {std::min(q[0],1023), std::min(q[1],1023), std::min(q[2],1023), std::min(q[3],1023)};
+                int nq[4] = {std::min(q[0],1023), std::min(q[1],1023),
+                             std::min(q[2],1023), std::min(q[3],1023)};
                 long c = block(p, d, nq) + V(1, nq);
+                // starvation penalty: add cost for leaving long-red dirs waiting
+                for (int i = 0; i < 4; i++) if (i != p) c += redTime[i] / 4;
                 if (best < 0 || c < best) { best = c; bp = p; bd = d; }
             }
         }
