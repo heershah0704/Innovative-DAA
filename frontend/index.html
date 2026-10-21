@@ -7,81 +7,80 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #111; --surface: #1a1a1a; --border: #2a2a2a;
-      --ink: #e8e8e8; --muted: #666;
-      --go: #22c55e; --slow: #eab308; --stop: #ef4444;
-      --road: #2d2d2d; --lane: #444; --car: #60a5fa;
+      --bg:#111; --surface:#1a1a1a; --border:#2a2a2a;
+      --ink:#e8e8e8; --muted:#666;
+      --go:#22c55e; --slow:#eab308; --stop:#ef4444;
+      --road:#2d2d2d; --lane:#444; --car:#60a5fa;
     }
-    body { background: var(--bg); color: var(--ink); font-family: system-ui, sans-serif; font-size: 14px; min-height: 100vh; }
+    body { background:var(--bg); color:var(--ink); font-family:system-ui,sans-serif; font-size:14px; min-height:100vh; }
 
     /* Header */
-    .top { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border); gap: 16px; flex-wrap: wrap; }
-    .top h1 { font-size: 1rem; font-weight: 600; }
-    .top .muted { font-size: .75rem; color: var(--muted); margin-top: 2px; }
-    .top-controls { display: flex; align-items: center; gap: 10px; }
-    .status { font-size: .75rem; padding: 3px 10px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); }
-    .status[data-state="running"] { border-color: var(--go); color: var(--go); }
+    .top { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--border); gap:16px; flex-wrap:wrap; }
+    .top h1 { font-size:1rem; font-weight:600; }
+    .top .muted { font-size:.75rem; color:var(--muted); margin-top:2px; }
+    .top-controls { display:flex; align-items:center; gap:10px; }
+    .status { font-size:.75rem; padding:3px 10px; border-radius:4px; background:var(--surface); border:1px solid var(--border); }
+    .status[data-state="running"] { border-color:var(--go); color:var(--go); }
+    .status[data-state="yellow"]  { border-color:var(--slow); color:var(--slow); }
 
     /* Layout */
-    .layout { display: grid; grid-template-columns: 1fr 330px; min-height: calc(100vh - 57px); }
-    .stage { padding: 16px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 14px; }
-    .side  { padding: 16px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+    .layout { display:grid; grid-template-columns:1fr 330px; min-height:calc(100vh - 57px); }
+    .stage { padding:16px; border-right:1px solid var(--border); display:flex; flex-direction:column; gap:14px; }
+    .side  { padding:16px; display:flex; flex-direction:column; gap:18px; overflow-y:auto; }
 
     /* Stage */
-    .stage-head { display: flex; align-items: center; justify-content: space-between; }
-    .stage-head h2 { font-size: .9rem; font-weight: 600; }
-    .clock { font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-    #intersection { width: 100%; max-width: 400px; align-self: center; }
+    .stage-head { display:flex; align-items:center; justify-content:space-between; }
+    .stage-head h2 { font-size:.9rem; font-weight:600; }
+    .clock { font-size:.85rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+    #intersection { width:100%; max-width:400px; align-self:center; }
 
     /* Controls */
-    .transport { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    button { padding: 6px 14px; border-radius: 5px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); cursor: pointer; font-size: .8rem; transition: background .15s; }
-    button:hover { background: #252525; }
-    button.primary { background: #14532d; border-color: var(--go); color: var(--go); }
-    button.primary:hover { background: #166534; }
-    .speed-label { font-size: .8rem; color: var(--muted); }
-    select { background: var(--surface); border: 1px solid var(--border); color: var(--ink); padding: 4px 6px; border-radius: 4px; font-size: .8rem; }
-    .hint { font-size: .72rem; color: var(--muted); }
+    .transport { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button { padding:6px 14px; border-radius:5px; border:1px solid var(--border); background:var(--surface); color:var(--ink); cursor:pointer; font-size:.8rem; transition:background .15s; }
+    button:hover { background:#252525; }
+    button.primary { background:#14532d; border-color:var(--go); color:var(--go); }
+    button.primary:hover { background:#166534; }
+    select { background:var(--surface); border:1px solid var(--border); color:var(--ink); padding:4px 6px; border-radius:4px; font-size:.8rem; }
+    .hint { font-size:.72rem; color:var(--muted); }
 
     /* Chart */
-    #chart { min-height: 80px; }
-    #chart svg { width: 100%; height: 80px; display: block; }
+    #chart { min-height:80px; }
+    #chart svg { width:100%; height:80px; display:block; }
 
     /* Side headings */
-    h2 { font-size: .85rem; font-weight: 600; }
-    h3 { font-size: .75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+    h2 { font-size:.85rem; font-weight:600; }
+    h3 { font-size:.75rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px; }
 
     /* Queue table */
-    .queues { width: 100%; border-collapse: collapse; font-size: .8rem; }
-    .queues th, .queues td { padding: 5px 6px; text-align: left; border-bottom: 1px solid var(--border); }
-    .queues th { color: var(--muted); font-weight: 500; font-size: .72rem; }
-    .num { text-align: right; font-variant-numeric: tabular-nums; }
-    .bar-col { width: 80px; }
-    .bar { height: 10px; background: var(--border); border-radius: 3px; }
-    .bar span { display: block; height: 100%; background: var(--stop); border-radius: 3px; transition: width .4s; }
-    .bar.moving span { background: var(--go); }
+    .queues { width:100%; border-collapse:collapse; font-size:.8rem; }
+    .queues th, .queues td { padding:5px 6px; text-align:left; border-bottom:1px solid var(--border); }
+    .queues th { color:var(--muted); font-weight:500; font-size:.72rem; }
+    .num { text-align:right; font-variant-numeric:tabular-nums; }
+    .bar-col { width:80px; }
+    .bar { height:10px; background:var(--border); border-radius:3px; }
+    .bar span { display:block; height:100%; background:var(--stop); border-radius:3px; transition:width .4s; }
+    .bar.green  span { background:var(--go); }
+    .bar.yellow span { background:var(--slow); }
 
     /* Signal */
-    .signal-now { display: flex; align-items: center; gap: 8px; font-size: .9rem; font-weight: 600; margin-top: 4px; }
-    .lamp { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
-    .lamp.green { background: var(--go); box-shadow: 0 0 8px var(--go); }
-    .lamp.red   { background: var(--stop); }
+    .signal-now { display:flex; align-items:center; gap:8px; font-size:.9rem; font-weight:600; margin-top:4px; }
+    .lamp { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+    .lamp.green  { background:var(--go);   box-shadow:0 0 8px var(--go); }
+    .lamp.yellow { background:var(--slow); box-shadow:0 0 8px var(--slow); }
+    .lamp.red    { background:var(--stop); }
 
     /* Metrics */
-    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .metrics > div { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
-    .metrics dt { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
-    .metrics dd { font-size: 1.1rem; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .metrics { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .metrics > div { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:8px 10px; }
+    .metrics dt { font-size:.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
+    .metrics dd { font-size:1.1rem; font-weight:600; margin-top:2px; font-variant-numeric:tabular-nums; }
 
     /* Arrival rates */
-    .arr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .arr-row  { display: flex; align-items: center; justify-content: space-between; font-size: .78rem; gap: 6px; }
-    .arr-row input { width: 52px; background: var(--surface); border: 1px solid var(--border); color: var(--ink); padding: 3px 6px; border-radius: 4px; text-align: center; font-size: .8rem; }
+    .arr-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+    .arr-row  { display:flex; align-items:center; justify-content:space-between; font-size:.78rem; gap:6px; }
+    .arr-row input { width:52px; background:var(--surface); border:1px solid var(--border); color:var(--ink); padding:3px 6px; border-radius:4px; text-align:center; font-size:.8rem; }
 
-    @media (max-width: 680px) {
-      .layout { grid-template-columns: 1fr; }
-      .stage { border-right: none; border-bottom: 1px solid var(--border); }
-    }
+    @media(max-width:680px) { .layout{grid-template-columns:1fr;} .stage{border-right:none;border-bottom:1px solid var(--border);} }
   </style>
 </head>
 <body>
@@ -89,7 +88,7 @@
 <header class="top">
   <div>
     <h1>Traffic Signal Optimization Simulator</h1>
-    <p class="muted">Greedy + priority queue — more waiting cars → longer green.</p>
+    <p class="muted">4 independent signals · Greedy priority queue · Yellow clearance between phases</p>
   </div>
   <div class="top-controls">
     <span class="status" id="status">Ready</span>
@@ -98,21 +97,17 @@
 </header>
 
 <main class="layout">
-
-  <!-- Left: SVG + controls + chart -->
   <section class="stage">
     <div class="stage-head">
       <h2>Intersection</h2>
-      <span class="clock" id="clock">0 / — s</span>
+      <span class="clock" id="clock">0 s</span>
     </div>
-
-    <svg id="intersection" viewBox="0 0 400 400" role="img" aria-label="Intersection diagram"></svg>
-
+    <svg id="intersection" viewBox="0 0 400 400" role="img" aria-label="4-way intersection with independent signals"></svg>
     <div class="transport">
       <button class="primary" id="btn">Start</button>
       <button onclick="doStep()">Step 1 s</button>
       <button onclick="doReset()">Reset</button>
-      <label class="speed-label">Speed
+      <label style="font-size:.8rem;color:var(--muted)">Speed
         <select id="speed">
           <option value="1000">1×</option>
           <option value="500">2×</option>
@@ -121,146 +116,152 @@
         </select>
       </label>
     </div>
-    <p class="hint">Keys: Space starts or pauses, → steps one second.</p>
-
+    <p class="hint">Space = start/pause · → = step one second</p>
     <h3>Total queue over time</h3>
     <div id="chart"></div>
   </section>
 
-  <!-- Right: queues + signal + metrics + rates -->
   <div class="side">
-
     <section>
       <h2>Queues</h2>
       <table class="queues">
-        <thead>
-          <tr>
-            <th>Approach</th>
-            <th class="num">Cars</th>
-            <th class="bar-col"></th>
-            <th class="num">Red for</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Direction</th><th class="num">Cars</th><th class="bar-col"></th><th class="num">Red for</th></tr></thead>
         <tbody id="queue-rows"></tbody>
       </table>
     </section>
-
     <section>
-      <h2>Controller</h2>
-      <p style="font-size:.78rem;color:var(--muted)">Strategy: Greedy priority queue</p>
+      <h2>Signal</h2>
+      <p style="font-size:.78rem;color:var(--muted)">Strategy: Greedy priority queue (4 independent signals)</p>
       <div class="signal-now" id="signal-now"></div>
       <p id="signal-next" style="font-size:.75rem;color:var(--muted);margin-top:5px"></p>
     </section>
-
     <section>
       <h2>This run</h2>
       <dl class="metrics" id="metrics"></dl>
     </section>
-
     <section>
       <h2>Arrival rates (cars / s)</h2>
       <div class="arr-grid" id="arr-inputs"></div>
     </section>
-
   </div>
 </main>
 
 <script>
-// ── constants ────────────────────────────────────────────────────────────────
+// ── constants ─────────────────────────────────────────────────────────────────
 const DIRS  = ['N','S','E','W'];
 const NAMES = {N:'North', S:'South', E:'East', W:'West'};
-const greenDirs = s => s.phase === 0 ? ['N','S'] : ['E','W'];
+const PHASE_NAMES = ['North','South','East','West'];
 
-// ── live stats (accumulated client-side) ─────────────────────────────────────
-let history  = [];
-let redFor   = {N:0, S:0, E:0, W:0};
-let totalWait = 0, totalServed = 0, peakQ = 0;
-let prev = null, ticker = null;
+// Each direction has its own signal — only the active phase is green (or yellow)
+function lampState(s, dir) {
+  const di = DIRS.indexOf(dir);
+  if (di === s.phase) return s.yellow ? 'yellow' : 'green';
+  return 'red';
+}
+
+// ── live stats ────────────────────────────────────────────────────────────────
+let history=[], redFor={N:0,S:0,E:0,W:0};
+let totalWait=0, totalServed=0, peakQ=0;
+let prev=null, ticker=null;
 
 // ── API ───────────────────────────────────────────────────────────────────────
-const api = url => fetch(url).then(r => r.json());
+const api = url => fetch(url).then(r=>r.json());
 
 // ── update UI ─────────────────────────────────────────────────────────────────
 function update(s) {
-  const gd  = greenDirs(s);
-  const qs  = DIRS.map((_,i) => s.q[i]);
+  const qs  = DIRS.map((_,i)=>s.q[i]);
   const tot = qs.reduce((a,b)=>a+b,0);
 
-  // accumulate stats
   history.push(tot);
-  if (tot > peakQ) peakQ = tot;
-  DIRS.forEach(d => { if (gd.includes(d)) redFor[d] = 0; else redFor[d]++; });
-  if (prev) {
-    greenDirs(prev).forEach(d => {
-      const i = DIRS.indexOf(d);
-      const served = Math.max(0, prev.q[i] + prev.arr[i] - s.q[i]);
-      totalServed += served;
-      totalWait   += redFor[d] * served;
-    });
+  if (tot>peakQ) peakQ=tot;
+
+  // Red-time tracking (client-side for display)
+  DIRS.forEach((d,i) => {
+    const isGreen = (i===s.phase && !s.yellow);
+    if (isGreen) redFor[d]=0; else redFor[d]++;
+  });
+
+  // Approximate served vehicles
+  if (prev && !prev.yellow) {
+    const i=prev.phase, delta=Math.max(0,prev.q[i]+prev.arr[i]-s.q[i]);
+    totalServed+=delta; totalWait+=redFor[DIRS[i]]*delta;
   }
-  prev = s;
+  prev=s;
 
-  // header
-  document.getElementById('clock').textContent = `${s.t} s`;
+  // Clock
+  document.getElementById('clock').textContent=`${s.t} s`;
 
-  // intersection SVG
-  document.getElementById('intersection').innerHTML = buildSVG(s);
+  // SVG
+  document.getElementById('intersection').innerHTML=buildSVG(s);
 
-  // queue table
-  const scale = Math.max(40, ...qs);
-  document.getElementById('queue-rows').innerHTML = DIRS.map((d,i) => {
-    const q = qs[i], moving = gd.includes(d);
-    const pct = scale > 0 ? Math.min(100, (q/scale)*100) : 0;
-    const redCell = moving
-      ? `<span style="color:var(--go)">green now</span>`
-      : `${redFor[d]} s`;
+  // Queue table
+  const scale=Math.max(40,...qs);
+  document.getElementById('queue-rows').innerHTML=DIRS.map((d,i)=>{
+    const q=qs[i], st=lampState(s,d);
+    const pct=scale>0?Math.min(100,(q/scale)*100):0;
+    const redCell=st==='green'
+      ?`<span style="color:var(--go)">green now</span>`
+      :st==='yellow'
+        ?`<span style="color:var(--slow)">yellow</span>`
+        :`${redFor[d]} s`;
     return `<tr>
       <th scope="row">${NAMES[d]}</th>
       <td class="num">${q}</td>
-      <td><div class="bar${moving?' moving':''}"><span style="width:${pct}%"></span></div></td>
+      <td><div class="bar ${st}"><span style="width:${pct}%"></span></div></td>
       <td class="num" style="font-size:.75rem">${redCell}</td>
     </tr>`;
   }).join('');
 
-  // signal
-  const phaseLabel = s.phase===0 ? 'North–South' : 'East–West';
-  document.getElementById('signal-now').innerHTML =
-    `<span class="lamp green"></span>${phaseLabel} green — ${s.timer} s remaining`;
-  document.getElementById('signal-next').textContent =
-    `When timer hits 0, the phase with more waiting cars wins the next green.`;
+  // Signal panel
+  if (s.yellow) {
+    document.getElementById('signal-now').innerHTML=
+      `<span class="lamp yellow"></span>Yellow clearance — ${s.timer} s`;
+    document.getElementById('signal-next').textContent=
+      `${PHASE_NAMES[s.phase]} was green. Clearing before next phase.`;
+  } else {
+    document.getElementById('signal-now').innerHTML=
+      `<span class="lamp green"></span>${PHASE_NAMES[s.phase]} green — ${s.timer} s remaining`;
+    document.getElementById('signal-next').textContent=
+      `When timer hits 0 → 2 s yellow → direction with most waiting cars wins next green.`;
+  }
 
-  // metrics
-  const avg = totalServed > 0 ? (totalWait/totalServed).toFixed(1)+' s' : 'N/A';
-  document.getElementById('metrics').innerHTML = [
-    ['Avg wait', avg],
-    ['Vehicles served', totalServed],
-    ['Peak total queue', peakQ],
-    ['Elapsed', s.t + ' s'],
-  ].map(([k,v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+  // Metrics
+  const avg=totalServed>0?(totalWait/totalServed).toFixed(1)+' s':'N/A';
+  document.getElementById('metrics').innerHTML=[
+    ['Avg wait',avg],['Vehicles served',totalServed],
+    ['Peak total queue',peakQ],['Elapsed',s.t+' s'],
+  ].map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
 
-  // chart
+  // Status chip
+  const el=document.getElementById('status');
+  if (ticker)      { el.textContent='Running'; el.dataset.state='running'; }
+  else if (s.yellow){ el.textContent='Yellow';  el.dataset.state='yellow'; }
+  else             { el.dataset.state=''; }
+
   renderChart();
 }
 
-// ── SVG intersection ─────────────────────────────────────────────────────────
-const PITCH = 13;
-const carPos = {
-  N:(i,c)=>({x:147+c*30, y:122-i*PITCH, w:16, h:10}),
-  S:(i,c)=>({x:207+c*30, y:268+i*PITCH, w:16, h:10}),
-  E:(i,c)=>({x:268+i*PITCH, y:147+c*30, w:10, h:16}),
-  W:(i,c)=>({x:122-i*PITCH, y:207+c*30, w:10, h:16}),
+// ── SVG intersection ──────────────────────────────────────────────────────────
+const PITCH=13;
+const carPos={
+  N:(i,c)=>({x:147+c*30,y:122-i*PITCH,w:16,h:10}),
+  S:(i,c)=>({x:207+c*30,y:268+i*PITCH,w:16,h:10}),
+  E:(i,c)=>({x:268+i*PITCH,y:147+c*30,w:10,h:16}),
+  W:(i,c)=>({x:122-i*PITCH,y:207+c*30,w:10,h:16}),
 };
-const headPos = {N:[128,124], S:[272,276], E:[276,128], W:[124,272]};
-const lblPos  = {
-  N:{x:128,y:24,a:'end'}, E:{x:392,y:24,a:'end'},
-  S:{x:272,y:368,a:'start'}, W:{x:8,y:290,a:'start'},
+const headPos={N:[128,124],S:[272,276],E:[276,128],W:[124,272]};
+const lblPos={
+  N:{x:128,y:24,a:'end'},  E:{x:392,y:24,a:'end'},
+  S:{x:272,y:368,a:'start'},W:{x:8,y:290,a:'start'},
 };
-const LAMP_CSS = {green:'var(--go)', red:'var(--stop)'};
+const LAMP_CSS={green:'var(--go)',yellow:'var(--slow)',red:'var(--stop)'};
+const LAMP_LETTER={green:'G',yellow:'Y',red:'R'};
+const LAMP_WORD={green:'go',yellow:'clear',red:'stop'};
 
 function buildSVG(s) {
-  const p = [];
-  const dash = `stroke="var(--lane)" stroke-width="2" stroke-dasharray="10 8"`;
-  const sln  = `stroke="var(--lane)" stroke-width="3"`;
+  const p=[];
+  const dash=`stroke="var(--lane)" stroke-width="2" stroke-dasharray="10 8"`;
+  const sln =`stroke="var(--lane)" stroke-width="3"`;
   p.push(`<rect x="140" y="0" width="120" height="400" fill="var(--road)"/>`);
   p.push(`<rect x="0" y="140" width="400" height="120" fill="var(--road)"/>`);
   p.push(`<line x1="200" y1="0"   x2="200" y2="136" ${dash}/><line x1="200" y1="264" x2="200" y2="400" ${dash}/>`);
@@ -268,93 +269,78 @@ function buildSVG(s) {
   p.push(`<line x1="140" y1="136" x2="200" y2="136" ${sln}/><line x1="200" y1="264" x2="260" y2="264" ${sln}/>`);
   p.push(`<line x1="264" y1="140" x2="264" y2="200" ${sln}/><line x1="136" y1="200" x2="136" y2="260" ${sln}/>`);
 
-  const gd = greenDirs(s);
-  DIRS.forEach((d, i) => {
-    const q = s.q[i], shown = Math.min(q, 18);
-    for (let k=0; k<shown; k++) {
-      const {x,y,w,h} = carPos[d](Math.floor(k/2), k%2);
+  DIRS.forEach((d,i) => {
+    const q=s.q[i], shown=Math.min(q,18), st=lampState(s,d);
+    for (let k=0;k<shown;k++) {
+      const {x,y,w,h}=carPos[d](Math.floor(k/2),k%2);
       p.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="var(--car)"/>`);
     }
-    const st = gd.includes(d) ? 'green' : 'red';
-    const [hx,hy] = headPos[d];
+    const [hx,hy]=headPos[d];
     p.push(`<circle cx="${hx}" cy="${hy}" r="8" fill="${LAMP_CSS[st]}"/>`);
-    p.push(`<text x="${hx}" y="${hy+3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${st==='green'?'G':'R'}</text>`);
-    const L = lblPos[d];
-    const word = st==='green' ? 'go' : 'stop';
-    p.push(`<text x="${L.x}" y="${L.y}"    text-anchor="${L.a}" font-size="12" fill="var(--muted)">${NAMES[d]}, ${word}</text>`);
+    p.push(`<text x="${hx}" y="${hy+3.5}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">${LAMP_LETTER[st]}</text>`);
+    const L=lblPos[d];
+    p.push(`<text x="${L.x}" y="${L.y}"    text-anchor="${L.a}" font-size="12" fill="var(--muted)">${NAMES[d]}, ${LAMP_WORD[st]}</text>`);
     p.push(`<text x="${L.x}" y="${L.y+20}" text-anchor="${L.a}" font-size="17" font-weight="600" fill="var(--ink)">${q} car${q===1?'':'s'}</text>`);
   });
 
-  const label = s.phase===0 ? 'N–S' : 'E–W';
-  p.push(`<text x="200" y="196" text-anchor="middle" font-size="18" font-weight="600" fill="var(--ink)">${label}</text>`);
-  p.push(`<text x="200" y="216" text-anchor="middle" font-size="12" fill="var(--ink)">green, ${s.timer} s</text>`);
+  const cx=s.yellow?'var(--slow)':'var(--ink)';
+  const label=s.yellow?'Yellow':'Only '+PHASE_NAMES[s.phase].charAt(0);
+  p.push(`<text x="200" y="194" text-anchor="middle" font-size="14" font-weight="600" fill="${cx}">${label}</text>`);
+  p.push(`<text x="200" y="214" text-anchor="middle" font-size="12" fill="${cx}">${s.yellow?'clearing':'green '+s.timer+'s'}</text>`);
   return p.join('');
 }
 
-// ── Chart ────────────────────────────────────────────────────────────────────
+// ── Chart ─────────────────────────────────────────────────────────────────────
 function renderChart() {
-  const el = document.getElementById('chart');
-  if (history.length < 2) { el.innerHTML = ''; return; }
-  const W = el.clientWidth || 400, H = 80;
-  const max = Math.max(1, ...history);
-  const pts = history.map((v,i) =>
-    `${(i/(history.length-1))*W},${H - (v/max)*(H-4)}`
-  ).join(' ');
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+  const el=document.getElementById('chart');
+  if (history.length<2){el.innerHTML='';return;}
+  const W=el.clientWidth||400,H=80,max=Math.max(1,...history);
+  const pts=history.map((v,i)=>`${(i/(history.length-1))*W},${H-(v/max)*(H-4)}`).join(' ');
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
     <polyline points="${pts}" fill="none" stroke="var(--go)" stroke-width="1.5"/>
   </svg>`;
 }
 
 // ── Controls ──────────────────────────────────────────────────────────────────
-async function doStep() {
-  const s = await api('/api/step');
-  update(s);
-  setStatus('Paused', '');
-}
+async function doStep() { update(await api('/api/step')); }
 
 async function doReset() {
   stopTicker();
   history=[]; redFor={N:0,S:0,E:0,W:0}; totalWait=0; totalServed=0; peakQ=0; prev=null;
-  document.getElementById('btn').textContent = 'Start';
-  setStatus('Ready','');
+  document.getElementById('btn').textContent='Start';
+  document.getElementById('status').textContent='Ready';
+  document.getElementById('status').dataset.state='';
   update(await api('/api/reset'));
 }
 
 function stopTicker() { clearInterval(ticker); ticker=null; }
 
-function setStatus(txt, state) {
-  const el = document.getElementById('status');
-  el.textContent = txt; el.dataset.state = state;
-}
-
-document.getElementById('btn').addEventListener('click', () => {
+document.getElementById('btn').addEventListener('click',()=>{
   if (ticker) {
     stopTicker();
-    document.getElementById('btn').textContent = 'Resume';
-    setStatus('Paused','');
+    document.getElementById('btn').textContent='Resume';
   } else {
-    const ms = Number(document.getElementById('speed').value);
-    ticker = setInterval(async () => { update(await api('/api/step')); }, ms);
-    document.getElementById('btn').textContent = 'Pause';
-    setStatus('Running','running');
+    const ms=Number(document.getElementById('speed').value);
+    ticker=setInterval(async()=>{update(await api('/api/step'));},ms);
+    document.getElementById('btn').textContent='Pause';
   }
 });
 
-document.getElementById('speed').addEventListener('change', function() {
-  if (!ticker) return;
+document.getElementById('speed').addEventListener('change',function(){
+  if(!ticker) return;
   stopTicker();
-  const ms = Number(this.value);
-  ticker = setInterval(async () => { update(await api('/api/step')); }, ms);
+  const ms=Number(this.value);
+  ticker=setInterval(async()=>{update(await api('/api/step'));},ms);
 });
 
-document.addEventListener('keydown', e => {
-  if (e.target.closest('input,select,button')) return;
-  if (e.key === ' ')          { e.preventDefault(); document.getElementById('btn').click(); }
-  if (e.key === 'ArrowRight') { e.preventDefault(); doStep(); }
+document.addEventListener('keydown',e=>{
+  if(e.target.closest('input,select,button')) return;
+  if(e.key===' '){e.preventDefault();document.getElementById('btn').click();}
+  if(e.key==='ArrowRight'){e.preventDefault();doStep();}
 });
 
 // ── Arrival rate inputs ───────────────────────────────────────────────────────
-document.getElementById('arr-inputs').innerHTML = DIRS.map((d,i) => `
+document.getElementById('arr-inputs').innerHTML=DIRS.map((d,i)=>`
   <div class="arr-row">
     <span>${NAMES[d]}</span>
     <input type="number" min="0" max="5" value="1" step="1"
